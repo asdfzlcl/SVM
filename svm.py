@@ -10,6 +10,9 @@ class Svm:
         self.parameter = kernel_parameter
         self.data=[]
         self.label=[]
+        self.alpha=[]
+        self.b = 0
+        self.N = 0
         print("SVM创建完成")
 
     def kernel_mul(self, x1, x2):
@@ -20,6 +23,8 @@ class Svm:
     def loaddate(self, data_test, label):
         self.data = data_test.copy()
         self.label = label.copy()
+        self.N = self.data.shape[0]
+        self.alpha = zeros(self.N)
         print("数据导入完成")
 
     def limit_range(self, A, H, L):

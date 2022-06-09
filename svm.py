@@ -20,6 +20,8 @@ class Svm:
         # 线性核
         if self.kernel == "linear":
             return x1.dot(x2.T)
+        elif self.kernel == "poly":
+            return 0
 
     def loaddate(self, data_test, label):
         self.data = data_test.copy()
@@ -44,30 +46,45 @@ class Svm:
             gi += self.alpha[j] * self.label[j] * self.kernel_mul(self.data[i], self.data[j])
         return gi
 
+    # 计算输入数据
+    def forecast(self,test):
+        gi = self.b
+        for j in range(self.N):
+            gi += self.alpha[j] * self.label[j] * self.kernel_mul(test, self.data[j])
+        if gi>0:
+            return 1
+        else:
+            return 0
+
     # 检验KKT条件
     def KKT(self, i):
         y_g = self.g(i) * self.label[i]
         if self.alpha[i] == 0:
-            return max([1 -y_g ,0])
+            return y_g >= 1
         elif 0 < self.alpha[i] < self.C:
-            return abs(1 -y_g)
+            return 1 == y_g
         else:
-            return max([y_g - 1,0])
+            return y_g <= 1
 
     # 寻找第一个违反KKT条件的下标
     def find_alpha1(self):
-        # index_list = [i for i in range(self.N) if 0 < self.alpha[i] < 1]
-        # non_satisfy_list = [i for i in range(self.N) if i not in index_list]
-        # index_list.extend(non_satisfy_list)
-        error = np.zeros(self.N)
+        index_list = [i for i in range(self.N) if 0 < self.alpha[i] < 1]
+        non_satisfy_list = [i for i in range(self.N) if i not in index_list]
+        index_list.extend(non_satisfy_list)
+        # error = np.zeros(self.N)
+        candidate = []
+        for i in index_list:
+            if self.KKT(i):
+                continue
+            candidate.append(i)
+        return candidate
+
+    def updateE(self):
         for i in range(self.N):
-            error[i] = self.KKT(i)
-        return np.argmax(error)
+            self.E[i] = self.g(i) - self.label[i]
 
     # 寻找第二个下标
     def find_alpha2(self, alpha1_id):
-        for i in range(self.N):
-            self.E[i] = self.g(i) - self.label[i]
         if self.E[alpha1_id] > 0:
             return np.argmin(self.E)
         else:
@@ -78,53 +95,69 @@ class Svm:
         while max_turn > 0:
             max_turn -= 1
             turn += 1
+            alpha_list = self.find_alpha1()
+            print(alpha_list)
+            for id1 in alpha_list:
+                if self.KKT(id1):
+                    continue
+                for id2 in range(self.N):
+                    self.updateE()
+                    if id2 == id1:
+                        continue
+                    # print(id1,id2)
+                    E1 = self.E[id1]
+                    E2 = self.E[id2]
+                    if self.label[id1] == self.label[id2]:
+                        L = max(0, self.alpha[id1] + self.alpha[id2] - self.C)
+                        H = min(self.C, self.alpha[id1] + self.alpha[id2])
+                    else:
+                        L = max(0, self.alpha[id2] - self.alpha[id1])
+                        H = min(self.C, self.C + self.alpha[id2] - self.alpha[id1])
 
-            id1 = self.find_alpha1()
-            id2 = self.find_alpha2(id1)
-            # print(id1,id2)
-            E1 = self.E[id1]
-            E2 = self.E[id2]
-            if self.label[id1] == self.label[id2]:
-                L = max(0, self.alpha[id1] + self.alpha[id2] - self.C)
-                H = min(self.C, self.alpha[id1] + self.alpha[id2])
-            else:
-                L = max(0, self.alpha[id2] - self.alpha[id1])
-                H = min(self.C, self.C + self.alpha[id2] - self.alpha[id1])
+                    if L==H:
+                        self.E[id2] = 1.5*self.E[id1]
 
-            alpha1_old = self.alpha[id1]
-            alpha2_old = self.alpha[id2]
-            eta = self.kernel_mul(self.data[id1], self.data[id1]) + self.kernel_mul(self.data[id2],
-                                                                            self.data[id2]) - 2 * self.kernel_mul(
-                self.data[id1], self.data[id2])
-            if eta <= 0:
-                continue
+                    alpha1_old = self.alpha[id1]
+                    alpha2_old = self.alpha[id2]
+                    eta = self.kernel_mul(self.data[id1], self.data[id1]) + self.kernel_mul(self.data[id2],
+                                                                                    self.data[id2]) - 2 * self.kernel_mul(
+                        self.data[id1], self.data[id2])
+                    if eta <= 0:
+                        continue
 
-            alpha2_new = self.limit_range(alpha2_old + self.label[id2] * (E1 - E2) / eta, H, L)
-            alpha1_new = self.label[id2] * (alpha2_old - alpha2_new) * self.label[id1] + alpha1_old
-
-
-            b1 = -E1 - \
-                 self.label[id1] * self.kernel_mul(self.data[id1], self.data[id1]) * (
-                    alpha1_new - alpha1_old) - \
-                 self.label[id2] * self.kernel_mul(
-                self.data[id2], self.data[id1]) * (alpha2_new - alpha2_old) + self.b
-
-            b2 = -E2 - \
-                 self.label[id1] * self.kernel_mul(self.data[id1], self.data[id2]) * (
-                    alpha1_new - alpha1_old) - \
-                 self.label[id2] * self.kernel_mul(
-                self.data[id2], self.data[id2]) * (alpha2_new - alpha2_old) + self.b
+                    alpha2_new = self.limit_range(alpha2_old + self.label[id2] * (E1 - E2) / eta, H, L)
+                    alpha1_new = self.label[id2] * (alpha2_old - alpha2_new) * self.label[id1] + alpha1_old
 
 
-            if 0 < self.alpha[id1] < self.C:
-                self.b = b1
-            elif 0 < self.alpha[id2] < self.C:
-                self.b = b2
-            else:
-                self.b = (b1+b2)/2
+                    b1 = -E1 - \
+                         self.label[id1] * self.kernel_mul(self.data[id1], self.data[id1]) * (
+                            alpha1_new - alpha1_old) - \
+                         self.label[id2] * self.kernel_mul(
+                        self.data[id2], self.data[id1]) * (alpha2_new - alpha2_old) + self.b
 
-            self.alpha[id2] = alpha2_new
-            self.alpha[id1] = alpha1_new
+                    b2 = -E2 - \
+                         self.label[id1] * self.kernel_mul(self.data[id1], self.data[id2]) * (
+                            alpha1_new - alpha1_old) - \
+                         self.label[id2] * self.kernel_mul(
+                        self.data[id2], self.data[id2]) * (alpha2_new - alpha2_old) + self.b
 
-            print("第"+str(turn)+"轮完成")
 
+                    if 0 < self.alpha[id1] < self.C:
+                        self.b = b1
+                    elif 0 < self.alpha[id2] < self.C:
+                        self.b = b2
+                    else:
+                        self.b = (b1+b2)/2
+
+                    self.alpha[id2] = alpha2_new
+                    self.alpha[id1] = alpha1_new
+
+                    # if abs(alpha1_new-alpha1_old)<0.01:
+                    #     self.E[id2] = 1.5*self.E[id1]
+
+
+            if turn%20==0:
+                print("第" + str(turn) + "轮完成")
+                print(self.alpha)
+
+        print(self.find_alpha1())

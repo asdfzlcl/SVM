@@ -1,7 +1,7 @@
 import numpy as np
 import time
 import matplotlib.pyplot as plt
-
+import math
 
 class Svm:
     def __init__(self, kernel_mul_type, C, kernel_mul_parameter):
@@ -20,8 +20,15 @@ class Svm:
         # 线性核
         if self.kernel == "linear":
             return x1.dot(x2.T)
-        elif self.kernel == "poly":
-            return 0
+        if self.kernel == "poly":
+            return (x1.dot(x2.T)*self.parameter[0]+self.parameter[1])**self.parameter[2]
+        if self.kernel == "gauss":
+            return math.exp(-self.parameter[0]*(np.sum((x1-x2)*(x1-x2))))
+        if self.kernel == "sigmoid":
+            return math.tanh(self.parameter[0]*x1.dot(x2.T)+self.parameter[1])
+        print("当前核未知")
+        return 0
+
 
     def loaddate(self, data_test, label):
         self.data = data_test.copy()
@@ -97,6 +104,7 @@ class Svm:
             turn += 1
             alpha_list = self.find_alpha1()
             print(alpha_list)
+            change = 0
             for id1 in alpha_list:
                 if self.KKT(id1):
                     continue
@@ -104,6 +112,8 @@ class Svm:
                     self.updateE()
                     if id2 == id1:
                         continue
+                    if self.KKT(id1):
+                        break
                     # print(id1,id2)
                     E1 = self.E[id1]
                     E2 = self.E[id2]
@@ -151,7 +161,7 @@ class Svm:
 
                     self.alpha[id2] = alpha2_new
                     self.alpha[id1] = alpha1_new
-
+                    change = alpha1_new - alpha1_old
                     # if abs(alpha1_new-alpha1_old)<0.01:
                     #     self.E[id2] = 1.5*self.E[id1]
 
@@ -159,5 +169,17 @@ class Svm:
             if turn%20==0:
                 print("第" + str(turn) + "轮完成")
                 print(self.alpha)
+            if change<0.00001:
+                print("结束")
+                return 0
 
         print(self.find_alpha1())
+
+
+
+    def support_vector(self):
+        support = []
+        for i in range(self.N):
+            if self.alpha[i]>0:
+                support.append(self.data[i])
+        return np.array(support)
